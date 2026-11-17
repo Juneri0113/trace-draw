@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>따라 그리기</title>
+<style>
+:root{--bg:#fff7e8;--card:#fff;--ink:#3a2e22;--accent:#ff7a59;--line:#f0dfc4;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+:root:not([data-theme="light"]){}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#2a2320;--card:#3a312c;--ink:#fbeedd;--line:#554840}}
+:root[data-theme="dark"]{--bg:#2a2320;--card:#3a312c;--ink:#fbeedd;--line:#554840}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font-family:"Jua","Noto Sans KR","Malgun Gothic",sans-serif;user-select:none;-webkit-user-select:none}
+button{font:inherit;color:inherit;cursor:pointer}
+.screen{display:none;height:100%;padding:16px 20px;flex-direction:column}
+.screen.on{display:flex}
+h1{margin:4px 0 12px;font-size:34px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:16px;overflow:auto;padding:4px}
+.tile{background:var(--card);border:3px solid var(--line);border-radius:24px;padding:12px;display:flex;flex-direction:column;align-items:center;gap:6px;font-size:22px;min-height:48px;position:relative}
+.tile canvas,.tile img{width:100%;aspect-ratio:10/7;border-radius:14px;background:#fff}
+.btn{background:var(--card);border:3px solid var(--line);border-radius:999px;min-width:56px;min-height:56px;padding:0 18px;font-size:22px}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:#fff}
+.bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.sp{flex:1}
+#wrap{position:relative;flex:1;min-height:0;display:flex;justify-content:center;align-items:center}
+#paper{position:relative;aspect-ratio:10/7;max-width:100%;max-height:100%;width:100%;background:#fff;border-radius:20px;border:4px solid var(--line);overflow:hidden;touch-action:none}
+#paper canvas{position:absolute;inset:0;width:100%;height:100%}
+.tools{display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap;justify-content:center}
+.sw{width:52px;height:52px;border-radius:50%;border:4px solid #fff;box-shadow:0 0 0 3px var(--line)}
+.sw.sel{box-shadow:0 0 0 5px var(--ink)}
+.toast{position:absolute;left:50%;top:14px;transform:translateX(-50%);background:var(--accent);color:#fff;padding:8px 22px;border-radius:999px;font-size:26px;opacity:0;transition:.3s;pointer-events:none}
+.toast.show{opacity:1}
+#done{position:absolute;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;z-index:5}
+#done.on{display:flex}
+#done .box{background:var(--card);padding:28px 36px;border-radius:28px;text-align:center}
+#done .stars{font-size:56px}
+#done .row{display:flex;gap:10px;justify-content:center;margin-top:14px;flex-wrap:wrap}
+.del{position:absolute;top:4px;right:4px;width:48px;height:48px;border-radius:50%;border:0;background:#0006;color:#fff;font-size:22px}
+</style>
+</head>
+<body>
+
+<section id="home" class="screen on">
+  <div class="bar"><h1>🎨 따라 그리기</h1><span class="sp"></span><button class="btn" id="toGallery">🖼️ 내 그림</button></div>
+  <div class="grid" id="menu"></div>
+</section>
+
+<section id="gallery" class="screen">
+  <div class="bar"><button class="btn" id="g-back">⬅ 처음</button><h1>🖼️ 내 그림</h1></div>
+  <div class="grid" id="gal"></div>
+</section>
+
+<section id="draw" class="screen">
+  <div class="bar">
+    <button class="btn" id="back">⬅</button>
+    <span id="title" style="font-size:26px"></span><span class="sp"></span>
+    <button class="btn" id="undo">↩️ 되돌리기</button>
+    <button class="btn" id="clear">🗑️ 지우기</button>
+    <button class="btn pri" id="save">💾 저장</button>
+  </div>
+  <div id="wrap">
+    <div id="paper">
+      <canvas id="guide" width="1000" height="700"></canvas>
+      <canvas id="cv" width="1000" height="700"></canvas>
+      <div class="toast" id="toast"></div>
+    </div>
+    <div id="done"><div class="box"><div class="stars">⭐⭐⭐</div><h2 style="font-size:32px;margin:6px 0">참 잘했어요!</h2>
+      <div class="row"><button class="btn pri" id="d-color">🖍️ 색칠하기</button><button class="btn" id="d-save">💾 저장</button><button class="btn" id="d-home">🏠 다른 그림</button></div></div></div>
+  </div>
+  <div class="tools" id="tools"></div>
+</section>
+
+<script>
+const W=1000,H=700;
+const circ=(x,y,r)=>`M${x-r} ${y}a${r} ${r} 0 1 0 ${2*r} 0a${r} ${r} 0 1 0 ${-2*r} 0`;
+const rays=[...Array(8)].map((_,i)=>{const a=i*Math.PI/4,c=Math.cos(a),s=Math.sin(a);return `M${500+c*170} ${350+s*170}L${500+c*250} ${350+s*250}`});
+const DRAWINGS=[
+ {name:"물고기",icon:"🐟",strokes:["M250 350C350 220 600 220 700 350C600 480 350 480 250 350Z","M700 350L830 260L830 440Z","M480 262Q520 170 580 250",circ(380,330,16),"M275 375Q305 395 335 378"]},
+ {name:"고양이",icon:"🐱",strokes:["M320 400a180 160 0 1 0 360 0a180 160 0 1 0 -360 0","M345 285L330 130L465 215","M655 285L670 130L535 215",circ(430,370,18),circ(570,370,18),"M480 405L520 405L500 430Z","M500 430Q470 465 440 445","M500 430Q530 465 560 445","M290 400L390 412","M290 455L390 440","M710 400L610 412","M710 455L610 440"]},
+ {name:"집",icon:"🏠",strokes:["M250 350L750 350L750 610L250 610Z","M215 355L500 130L785 355","M440 610L440 470L560 470L560 610Z","M300 400L390 400L390 490L300 490Z","M610 400L700 400L700 490L610 490Z"]},
+ {name:"해",icon:"☀️",strokes:[circ(500,350,120),...rays,"M450 330L450 345","M550 330L550 345","M440 390Q500 440 560 390"]}
+];
+const COLORS=["#222222","#e53935","#ff9800","#fdd835","#43a047","#1e88e5","#8e24aa","#8d6e63","#ec407a"];
+const $=id=>document.getElementById(id);
+const gc=$("guide").getContext("2d"),cv=$("cv"),ctx=cv.getContext("2d");
+let cur=null,paths=[],samples=[],idx=0,mode="trace",strokes=[],color=COLORS[1],size=10,eraser=false,drawing=null,penSeen=false,fails=0,raf=0,t0=0;
+
+function show(id){document.querySelectorAll(".screen").forEach(s=>s.classList.toggle("on",s.id===id));if(id!=="draw")cancelAnimationFrame(raf)}
+function thumb(d){const c=document.createElement("canvas");c.width=300;c.height=210;const x=c.getContext("2d");x.scale(.3,.3);x.lineWidth=12;x.strokeStyle="#ffb199";x.lineCap="round";d.strokes.forEach(s=>x.stroke(new Path2D(s)));return c}
+function buildMenu(){const m=$("menu");m.innerHTML="";DRAWINGS.forEach((d,i)=>{const b=document.createElement("button");b.className="tile";b.append(thumb(d));b.append(`${d.icon} ${d.name}`);b.onclick=()=>start(i);m.append(b)})}
+
+function sample(s){const p=document.createElementNS("http://www.w3.org/2000/svg","path");p.setAttribute("d",s);const L=p.getTotalLength(),n=Math.max(12,Math.round(L/25)),a=[];for(let i=0;i<=n;i++){const q=p.getPointAtLength(L*i/n);a.push([q.x,q.y])}return a}
+
+function start(i){cur=DRAWINGS[i];paths=cur.strokes.map(s=>new Path2D(s));samples=cur.strokes.map(sample);idx=0;mode="trace";strokes=[];fails=0;$("title").textContent=cur.icon+" "+cur.name;$("done").classList.remove("on");show("draw");redraw();loop()}
+
+function redraw(){ctx.clearRect(0,0,W,H);strokes.forEach(drawStroke)}
+function drawStroke(s){ctx.save();ctx.globalCompositeOperation=s.eraser?"destination-out":"source-over";ctx.strokeStyle=s.color;ctx.lineCap=ctx.lineJoin="round";
+ if(s.pts.length===1){const p=s.pts[0];ctx.fillStyle=s.color;ctx.beginPath();ctx.arc(p[0],p[1],p[2]/2,0,7);ctx.fill()}
+ for(let i=1;i<s.pts.length;i++){const a=s.pts[i-1],b=s.pts[i];ctx.lineWidth=b[2];ctx.beginPath();ctx.moveTo(a[0],a[1]);ctx.lineTo(b[0],b[1]);ctx.stroke()}ctx.restore()}
+
+function loop(t){raf=requestAnimationFrame(loop);gc.clearRect(0,0,W,H);gc.lineCap=gc.lineJoin="round";
+ if(mode==="free"){gc.setLineDash([]);gc.lineWidth=5;gc.strokeStyle="#c9ced6";paths.forEach(p=>gc.stroke(p));return}
+ gc.setLineDash([]);gc.lineWidth=7;gc.strokeStyle="#c9ced6";for(let i=0;i<idx;i++)gc.stroke(paths[i]);
+ if(idx<paths.length){const ph=(t||0)/40;gc.setLineDash([22,16]);gc.lineDashOffset=-ph;gc.lineWidth=9;gc.strokeStyle="#ff7a59";gc.stroke(paths[idx]);gc.setLineDash([]);
+  const s=samples[idx][0],r=26+4*Math.sin((t||0)/200);gc.fillStyle="#2eb872";gc.beginPath();gc.arc(s[0],s[1],r,0,7);gc.fill();gc.fillStyle="#fff";gc.font="bold 28px sans-serif";gc.textAlign="center";gc.textBaseline="middle";gc.fillText(idx+1,s[0],s[1]+1)}}
+
+function pos(e){const r=cv.getBoundingClientRect();return[(e.clientX-r.left)*W/r.width,(e.clientY-r.top)*H/r.height]}
+function ptr(e){const [x,y]=pos(e);const w=e.pointerType==="pen"?size*(.4+(e.pressure||.5)*1.3):size;return[x,y,eraser?size*2.5:w]}
+cv.addEventListener("pointerdown",e=>{if(e.pointerType==="pen")penSeen=true;if(e.pointerType==="touch"&&penSeen)return;if(drawing)return;cv.setPointerCapture(e.pointerId);drawing={id:e.pointerId,color:color,eraser:eraser&&mode==="free",pts:[ptr(e)],trace:mode==="trace"};drawStroke(drawing)});
+cv.addEventListener("pointermove",e=>{if(!drawing||e.pointerId!==drawing.id)return;const evs=e.getCoalescedEvents?e.getCoalescedEvents():[e];evs.forEach(ev=>{const p=ptr(ev),l=drawing.pts[drawing.pts.length-1];drawing.pts.push(p);drawStroke({...drawing,pts:[l,p]})})});
+const end=e=>{if(!drawing||e.pointerId!==drawing.id)return;const s=drawing;drawing=null;
+ if(!s.trace){strokes.push(s);return}
+ judge(s)};
+cv.addEventListener("pointerup",end);cv.addEventListener("pointercancel",end);
+
+function judge(s){const g=samples[idx],pts=s.pts;const d=(a,b)=>Math.hypot(a[0]-b[0],a[1]-b[1]);
+ const cover=g.filter(q=>pts.some(p=>d(p,q)<55)).length/g.length;
+ const prec=pts.filter(p=>g.some(q=>d(p,q)<75)).length/pts.length;
+ if((cover>=.75&&prec>=.6)||(fails>=2&&cover>=.5)){s.traceIdx=idx;strokes.push(s);idx++;fails=0;redraw();
+  if(idx>=paths.length){setTimeout(()=>$("done").classList.add("on"),350)}else toast(["잘했어요!","멋져요!","좋아요!","최고예요!"][idx%4])}
+ else{fails++;redraw();toast("다시 한번! 초록 점에서 시작해요")}}
+
+function toast(t){const e=$("toast");e.textContent=t;e.classList.add("show");clearTimeout(toast.t);toast.t=setTimeout(()=>e.classList.remove("show"),1100)}
+
+$("undo").onclick=()=>{const s=strokes.pop();if(!s)return;if(s.traceIdx!==undefined){idx=s.traceIdx;mode="trace"}redraw()};
+$("clear").onclick=()=>{strokes=[];idx=0;mode="trace";fails=0;redraw()};
+$("back").onclick=()=>show("home");
+$("d-color").onclick=()=>{mode="free";$("done").classList.remove("on")};
+$("d-home").onclick=()=>show("home");
+$("d-save").onclick=()=>{saveImg();$("done").classList.remove("on");mode="free"};
+$("save").onclick=saveImg;
+
+function tools(){const t=$("tools");t.innerHTML="";COLORS.forEach(c=>{const b=document.createElement("button");b.className="sw"+(c===color&&!eraser?" sel":"");b.style.background=c;b.onclick=()=>{color=c;eraser=false;tools()};t.append(b)});
+ [[6,"가늘게"],[12,"보통"],[22,"굵게"]].forEach(([n,l])=>{const b=document.createElement("button");b.className="btn";b.style.background=size===n?"var(--line)":"";b.textContent=l;b.onclick=()=>{size=n;tools()};t.append(b)});
+ const e=document.createElement("button");e.className="btn";e.textContent="🧽 지우개";e.style.background=eraser?"var(--line)":"";e.onclick=()=>{if(mode!=="free"){toast("색칠 모드에서 쓸 수 있어요")}else{eraser=!eraser;tools()}};t.append(e)}
+
+function getGal(){try{return JSON.parse(localStorage.getItem("gal")||"[]")}catch(e){return[]}}
+function saveImg(){const c=document.createElement("canvas");c.width=400;c.height=280;const x=c.getContext("2d");x.fillStyle="#fff";x.fillRect(0,0,400,280);x.scale(.4,.4);x.lineCap="round";x.lineWidth=5;x.strokeStyle="#d5d9df";paths.forEach(p=>x.stroke(p));x.drawImage(cv,0,0);
+ try{const g=getGal();g.unshift({n:cur.name,i:c.toDataURL("image/jpeg",.7)});localStorage.setItem("gal",JSON.stringify(g.slice(0,30)));toast("저장했어요!")}catch(e){toast("저장할 수 없어요")}}
+function showGal(){const g=getGal(),el=$("gal");el.innerHTML="";if(!g.length)el.textContent="아직 저장한 그림이 없어요.";g.forEach((it,k)=>{const d=document.createElement("div");d.className="tile";const im=new Image();im.src=it.i;d.append(im,it.n);const x=document.createElement("button");x.className="del";x.textContent="✕";x.onclick=()=>{g.splice(k,1);try{localStorage.setItem("gal",JSON.stringify(g))}catch(e){}showGal()};d.append(x);el.append(d)});show("gallery")}
+$("toGallery").onclick=showGal;$("g-back").onclick=()=>show("home");
+buildMenu();tools();
+</script>
+</body>
+</html>
